@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>example</groupId>
+  <artifactId>dk-java-cc-client</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <main.class>example.ClientExample</main.class>
+
+    <kafka.version>4.0.0</kafka.version>
+    <confluent.plugins.version>8.1.1-ce</confluent.plugins.version>
+    <slf4j.version>1.7.36</slf4j.version>
+
+    <entra.token.url>https://login.microsoftonline.com/1b9dca15-4db4-4905-8725-d318d11c6875/oauth2/v2.0/token</entra.token.url>
+  </properties>
+
+  <repositories>
+    <repository>
+      <id>confluent</id>
+      <url>https://packages.confluent.io/maven/</url>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.apache.kafka</groupId>
+      <artifactId>kafka-clients</artifactId>
+      <version>${kafka.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>io.confluent</groupId>
+      <artifactId>kafka-client-plugins</artifactId>
+      <version>${confluent.plugins.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-nop</artifactId>
+      <version>${slf4j.version}</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>${main.class}</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <mainClass>${main.class}</mainClass>
+          <systemProperties>
+            <systemProperty>
+              <key>org.apache.kafka.sasl.oauthbearer.allowed.urls</key>
+              <value>${entra.token.url}</value>
+            </systemProperty>
+          </systemProperties>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

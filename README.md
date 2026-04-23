@@ -4,22 +4,23 @@ This project contains a Java application that subscribes to a topic on a Conflue
 
 ## Prerequisites
 
-This project assumes you have [Java 21](https://www.oracle.com/java/technologies/downloads/#java21) and [Gradle 8.7](https://gradle.org/install/) installed.
+This project assumes you have [Java 21](https://www.oracle.com/java/technologies/downloads/#java21) and [Maven 3.9+](https://maven.apache.org/install.html) installed.
 
 ## Installation
 
 You can compile this project by running the following command in the root directory of this project:
 
 ```shell
-gradle build
+mvn package
 ```
 
 ## Usage
 
-You can run the application by running the following command in the root directory of this project:
+Export your Azure app client secret, then run the application:
 
 ```shell
-gradle run
+export AZURE_CLIENT_SECRET=...
+mvn exec:java
 ```
 
 ## Learn more

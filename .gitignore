@@ -1,4 +1,3 @@
 client.properties
-.gradle/
-build/
+target/
 .vscode/
