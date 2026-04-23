@@ -22,8 +22,8 @@ class Program
         // Read Azure AD settings
         var tenantId = configuration["AzureAd:TenantId"]!;
         var clientId = configuration["AzureAd:ClientId"]!;
-        var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET")
-            ?? throw new InvalidOperationException("AZURE_CLIENT_SECRET environment variable is not set");
+        var clientSecret = configuration["AzureAd:ClientSecret"]
+            ?? throw new InvalidOperationException("ClientSecret is not set in appsettings.json");
         var scope = configuration["AzureAd:Scope"]!;
 
         // Determine mode

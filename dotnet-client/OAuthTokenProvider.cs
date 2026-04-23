@@ -25,8 +25,8 @@ public class OAuthTokenProvider
         var tokenRequestContext = new TokenRequestContext(new[] { _scope });
         var token = await _credential.GetTokenAsync(tokenRequestContext);
 
-        // Calculate expiry in milliseconds from now
-        var expiresInMs = (long)(token.ExpiresOn - DateTimeOffset.UtcNow).TotalMilliseconds;
+        // Return absolute expiry time as Unix timestamp in milliseconds
+        var expiresInMs = token.ExpiresOn.ToUnixTimeMilliseconds();
 
         return (token.Token, expiresInMs);
     }
