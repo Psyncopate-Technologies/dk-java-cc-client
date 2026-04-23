@@ -15,6 +15,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.errors.WakeupException;
 
 public class ClientExample {
   private static final String PRODUCE_TOPIC = "dkp-java-client-test";
@@ -73,14 +74,13 @@ public class ClientExample {
 
   public static void consume(String topic, Properties config) {
     try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(config)) {
+      Runtime.getRuntime().addShutdownHook(new Thread(consumer::wakeup));
       consumer.subscribe(Arrays.asList(topic));
 
-      int emptyPolls = 0;
-      while (emptyPolls < 6) {
+      while (true) {
         ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
 
         if (records.isEmpty()) {
-          emptyPolls++;
           System.out.println("No records yet.");
           continue;
         }
@@ -93,9 +93,9 @@ public class ClientExample {
                   record.key(),
                   record.value()));
         }
-        return;
       }
-      System.out.println("No records after 30s; exiting.");
+    } catch (WakeupException e) {
+      System.out.println("Shutdown signal received; closing consumer.");
     }
   }
 }
