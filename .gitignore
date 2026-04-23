@@ -1,0 +1,4 @@
+client.properties
+.gradle/
+build/
+.vscode/
