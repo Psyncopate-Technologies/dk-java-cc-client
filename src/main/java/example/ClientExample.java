@@ -9,21 +9,19 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.Properties;
 
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
 
 public class ClientExample {
+  private static final String DEFAULT_TOPIC = "dkp-java-client-test";
+
   public static void main(String[] args) {
     try {
-      String topic = "without_dkp_test";
+      String topic = args.length > 0 ? args[0] : DEFAULT_TOPIC;
 
       final Properties producerConfig = readConfig("producer-client.properties");
       final Properties consumerConfig = readConfig("consumer-client.properties");
@@ -49,9 +47,6 @@ public class ClientExample {
   }
 
   public static void produce(String topic, Properties config) {
-    config.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-    config.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-
     String key = "key";
     String value = "hello from Java OIDC producer 1";
 
@@ -76,18 +71,15 @@ public class ClientExample {
   }
 
   public static void consume(String topic, Properties config) {
-    config.put(ConsumerConfig.GROUP_ID_CONFIG, "dkp-java-group-1");
-    config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    config.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-    config.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
-
     try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(config)) {
       consumer.subscribe(Arrays.asList(topic));
 
-      while (true) {
+      int emptyPolls = 0;
+      while (emptyPolls < 6) {
         ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
 
         if (records.isEmpty()) {
+          emptyPolls++;
           System.out.println("No records yet.");
           continue;
         }
@@ -100,7 +92,9 @@ public class ClientExample {
                   record.key(),
                   record.value()));
         }
+        return;
       }
+      System.out.println("No records after 30s; exiting.");
     }
   }
 }
