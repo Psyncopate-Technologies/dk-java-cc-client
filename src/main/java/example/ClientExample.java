@@ -17,17 +17,17 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 public class ClientExample {
-  private static final String DEFAULT_TOPIC = "dkp-java-client-test";
+  private static final String PRODUCE_TOPIC = "dkp-java-client-test";
+  private static final String CONSUME_TOPIC = "dkp-java-client-test";
+  private static final int MESSAGE_COUNT = 10;
 
   public static void main(String[] args) {
     try {
-      String topic = args.length > 0 ? args[0] : DEFAULT_TOPIC;
-
       final Properties producerConfig = readConfig("producer-client.properties");
       final Properties consumerConfig = readConfig("consumer-client.properties");
 
-      produce(topic, producerConfig);
-      consume(topic, consumerConfig);
+      produce(PRODUCE_TOPIC, producerConfig);
+      consume(CONSUME_TOPIC, consumerConfig);
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -47,24 +47,25 @@ public class ClientExample {
   }
 
   public static void produce(String topic, Properties config) {
-    String key = "key";
-    String value = "hello from Java OIDC producer 1";
-
     try (Producer<String, String> producer = new KafkaProducer<>(config)) {
-      producer.send(new ProducerRecord<>(topic, key, value), (metadata, exception) -> {
-        if (exception == null) {
-          System.out.println(
-              String.format(
-                  "Produced message to topic %s partition %d offset %d: key = %s value = %s",
-                  metadata.topic(),
-                  metadata.partition(),
-                  metadata.offset(),
-                  key,
-                  value));
-        } else {
-          exception.printStackTrace();
-        }
-      });
+      for (int i = 0; i < MESSAGE_COUNT; i++) {
+        final String key = "key-" + i;
+        final String value = "hello from Java OIDC producer " + i;
+        producer.send(new ProducerRecord<>(topic, key, value), (metadata, exception) -> {
+          if (exception == null) {
+            System.out.println(
+                String.format(
+                    "Produced message to topic %s partition %d offset %d: key = %s value = %s",
+                    metadata.topic(),
+                    metadata.partition(),
+                    metadata.offset(),
+                    key,
+                    value));
+          } else {
+            exception.printStackTrace();
+          }
+        });
+      }
 
       producer.flush();
     }
