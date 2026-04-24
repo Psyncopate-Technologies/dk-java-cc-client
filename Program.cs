@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Confluent.Kafka;
 using Microsoft.Extensions.Configuration;
 
@@ -6,6 +7,7 @@ namespace DkDotnetCcClient;
 public static class Program
 {
     private const int MessageCount = 10;
+    private static readonly HttpClient HttpClient = new();
 
     public static int Main(string[] args)
     {
@@ -29,8 +31,8 @@ public static class Program
             var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET")
                 ?? throw new InvalidOperationException("AZURE_CLIENT_SECRET env var is not set.");
 
-            Produce(kafka.Topic, BuildProducerConfig(kafka, azure, clientSecret));
-            Consume(kafka.Topic, BuildConsumerConfig(kafka, azure, clientSecret));
+            Produce(kafka, azure, clientSecret);
+            Consume(kafka, azure, clientSecret);
             return 0;
         }
         catch (Exception ex)
@@ -40,50 +42,26 @@ public static class Program
         }
     }
 
-    private static ProducerConfig BuildProducerConfig(KafkaSettings k, AzureAdSettings a, string clientSecret)
+    private static void Produce(KafkaSettings k, AzureAdSettings a, string clientSecret)
     {
-        var cfg = new ProducerConfig { Acks = Acks.All };
-        ApplyOAuth(cfg, k, a, clientSecret);
-        return cfg;
-    }
-
-    private static ConsumerConfig BuildConsumerConfig(KafkaSettings k, AzureAdSettings a, string clientSecret)
-    {
-        var cfg = new ConsumerConfig
+        var cfg = new ProducerConfig
         {
-            GroupId = k.GroupId,
-            AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true,
+            BootstrapServers = k.BootstrapServers,
+            SecurityProtocol = SecurityProtocol.SaslSsl,
+            SaslMechanism = SaslMechanism.OAuthBearer,
+            Acks = Acks.All,
         };
-        ApplyOAuth(cfg, k, a, clientSecret);
-        return cfg;
-    }
 
-    private static void ApplyOAuth(ClientConfig cfg, KafkaSettings k, AzureAdSettings a, string clientSecret)
-    {
-        cfg.BootstrapServers = k.BootstrapServers;
-        cfg.SecurityProtocol = SecurityProtocol.SaslSsl;
-        cfg.SaslMechanism = SaslMechanism.OAuthBearer;
-        cfg.SaslOauthbearerMethod = SaslOauthbearerMethod.Oidc;
-        cfg.SaslOauthbearerClientId = a.ClientId;
-        cfg.SaslOauthbearerClientSecret = clientSecret;
-        cfg.SaslOauthbearerScope = $"api://{a.ClientId}/.default";
-        cfg.SaslOauthbearerTokenEndpointUrl =
-            $"https://login.microsoftonline.com/{a.TenantId}/oauth2/v2.0/token";
-        cfg.SaslOauthbearerExtensions =
-            $"logicalCluster={k.LogicalCluster},identityPoolId={k.IdentityPoolId}";
-    }
-
-    private static void Produce(string topic, ProducerConfig config)
-    {
-        using var producer = new ProducerBuilder<string, string>(config).Build();
+        using var producer = new ProducerBuilder<string, string>(cfg)
+            .SetOAuthBearerTokenRefreshHandler((client, _) => RefreshToken(client, k, a, clientSecret))
+            .Build();
 
         for (int i = 0; i < MessageCount; i++)
         {
             var key = $"key-{i}";
             var value = $"hello from .NET OIDC producer {i}";
 
-            producer.Produce(topic, new Message<string, string> { Key = key, Value = value },
+            producer.Produce(k.Topic, new Message<string, string> { Key = key, Value = value },
                 report =>
                 {
                     if (report.Error.IsError)
@@ -101,8 +79,18 @@ public static class Program
         producer.Flush(TimeSpan.FromSeconds(30));
     }
 
-    private static void Consume(string topic, ConsumerConfig config)
+    private static void Consume(KafkaSettings k, AzureAdSettings a, string clientSecret)
     {
+        var cfg = new ConsumerConfig
+        {
+            BootstrapServers = k.BootstrapServers,
+            SecurityProtocol = SecurityProtocol.SaslSsl,
+            SaslMechanism = SaslMechanism.OAuthBearer,
+            GroupId = k.GroupId,
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+            EnableAutoCommit = true,
+        };
+
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
@@ -110,8 +98,10 @@ public static class Program
             cts.Cancel();
         };
 
-        using var consumer = new ConsumerBuilder<string, string>(config).Build();
-        consumer.Subscribe(topic);
+        using var consumer = new ConsumerBuilder<string, string>(cfg)
+            .SetOAuthBearerTokenRefreshHandler((client, _) => RefreshToken(client, k, a, clientSecret))
+            .Build();
+        consumer.Subscribe(k.Topic);
 
         try
         {
@@ -130,13 +120,58 @@ public static class Program
                 if (result?.Message == null) continue;
 
                 Console.WriteLine(
-                    $"Consumed message from topic {topic}: key = {result.Message.Key} value = {result.Message.Value}");
+                    $"Consumed message from topic {k.Topic}: key = {result.Message.Key} value = {result.Message.Value}");
             }
         }
         finally
         {
             Console.WriteLine("Shutdown signal received; closing consumer.");
             consumer.Close();
+        }
+    }
+
+    private static void RefreshToken(IClient client, KafkaSettings k, AzureAdSettings a, string clientSecret)
+    {
+        try
+        {
+            var form = new Dictionary<string, string>
+            {
+                ["client_id"] = a.ClientId,
+                ["client_secret"] = clientSecret,
+                ["scope"] = $"api://{a.ClientId}/.default",
+                ["grant_type"] = "client_credentials",
+            };
+
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"https://login.microsoftonline.com/{a.TenantId}/oauth2/v2.0/token")
+            {
+                Content = new FormUrlEncodedContent(form),
+            };
+
+            using var response = HttpClient.Send(request);
+            response.EnsureSuccessStatusCode();
+
+            using var stream = response.Content.ReadAsStream();
+            using var doc = JsonDocument.Parse(stream);
+            var root = doc.RootElement;
+
+            var accessToken = root.GetProperty("access_token").GetString()
+                ?? throw new InvalidOperationException("Token response missing 'access_token'.");
+            var expiresIn = root.GetProperty("expires_in").GetInt64();
+            var lifetimeMs = DateTimeOffset.UtcNow.AddSeconds(expiresIn).ToUnixTimeMilliseconds();
+
+            var extensions = new Dictionary<string, string>
+            {
+                ["logicalCluster"] = k.LogicalCluster,
+                ["identityPoolId"] = k.IdentityPoolId,
+            };
+
+            client.OAuthBearerSetToken(accessToken, lifetimeMs, a.ClientId, extensions);
+        }
+        catch (Exception ex)
+        {
+            client.OAuthBearerSetTokenFailure(ex.ToString());
         }
     }
 
